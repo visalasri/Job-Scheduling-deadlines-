@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Scheduler - Azure Network Edition</title>
+    <style>
+        body { margin: 0; font-family: 'Inter', sans-serif; overflow: hidden; background: #010409; color: #e6edf3; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        canvas { position: absolute; top: 0; left: 0; z-index: -1; }
+        
+        .container { width: 90%; max-width: 1100px; z-index: 10; display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+        
+        /* Azure Glass Effect */
+        .glass { 
+            background: rgba(13, 17, 23, 0.85); 
+            backdrop-filter: blur(10px); 
+            border: 1px solid rgba(48, 54, 61, 0.8); 
+            border-radius: 16px; 
+            padding: 24px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6); 
+        }
+
+        h1 { font-size: 1.8rem; color: #58a6ff; margin: 0 0 20px 0; text-align: center; letter-spacing: -0.5px; }
+        h3 { font-size: 1rem; color: #8b949e; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
+
+        input { 
+            width: calc(100% - 24px); 
+            background: #0d1117; 
+            border: 1px solid #30363d; 
+            padding: 12px; 
+            color: #c9d1d9; 
+            border-radius: 8px; 
+            margin-bottom: 12px; 
+            outline: none; 
+            transition: 0.3s;
+        }
+        input:focus { border-color: #58a6ff; box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.3); }
+
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.3s; margin-bottom: 10px; }
+        .btn-add { background: #1f6feb; color: white; }
+        .btn-add:hover { background: #388bfd; }
+        .btn-run { background: #238636; color: white; font-size: 1rem; margin-top: 10px; }
+        .btn-run:hover { background: #2ea043; }
+        .btn-reset { background: transparent; border: 1px solid #f85149; color: #f85149; }
+        .btn-reset:hover { background: #f85149; color: white; }
+
+        .log { 
+            height: 110px; 
+            background: #010409; 
+            border-radius: 8px; 
+            padding: 12px; 
+            font-family: 'SFMono-Regular', Consolas, monospace; 
+            font-size: 0.75rem; 
+            overflow-y: auto; 
+            color: #7d8590; 
+            border: 1px solid #30363d; 
+        }
+
+        .job-chip { 
+            background: rgba(56, 139, 253, 0.15); 
+            border: 1px solid rgba(56, 139, 253, 0.4); 
+            padding: 6px 14px; 
+            border-radius: 20px; 
+            display: inline-block; 
+            margin: 4px; 
+            font-size: 0.85rem; 
+            color: #58a6ff;
+        }
+
+        .timeline { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; margin-top: 20px; }
+        .slot { 
+            height: 75px; 
+            border: 1px solid #30363d; 
+            border-radius: 12px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 0.8rem; 
+            color: #484f58;
+            background: rgba(22, 27, 34, 0.5); 
+        }
+        
+        .filled { 
+            background: linear-gradient(135deg, #238636 0%, #2ea043 100%); 
+            color: white; 
+            border: none; 
+            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.4);
+            animation: slideIn 0.4s ease-out;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .profit-box { text-align: right; margin-top: 20px; }
+        .profit-label { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; }
+        .profit-val { font-size: 2.2rem; font-weight: 800; color: #3fb950; }
+    </style>
+</head>
+<body>
+    <canvas id="constellation"></canvas>
+    
+    <div class="container">
+        <!-- Sidebar Controls -->
+        <div class="glass">
+            <h1>Scheduler</h1>
+            <form id="jobForm">
+                <input type="text" id="id" placeholder="Job Name" required>
+                <input type="number" id="dl" placeholder="Deadline Slot" required>
+                <input type="number" id="pr" placeholder="Profit ($)" required>
+                <button type="submit" class="btn btn-add">Add Job</button>
+            </form>
+            <button onclick="loadDemo()" class="btn btn-add" style="background:#21262d; color:#c9d1d9; border: 1px solid #30363d">Demo Data</button>
+            <button onclick="reset()" class="btn btn-reset">Clear All</button>
+            <div id="log" class="log">> Ready.</div>
+        </div>
+
+        <!-- Main Display -->
+        <div class="glass">
+            <div style="display:flex; justify-content:space-between; align-items:center">
+                <h3>Current Queue</h3>
+                <button onclick="run()" class="btn btn-run" style="width:auto; padding:8px 24px">Run Algorithm ▶</button>
+            </div>
+            <div id="pool" style="min-height:50px;"></div>
+            
+            <h3 style="margin-top:25px">Execution Timeline</h3>
+            <div id="time" class="timeline"></div>
+            
+            <div class="profit-box">
+                <div class="profit-label">Total Optimized Profit</div>
+                <div id="total" class="profit-val">$0</div>
+            </div>
+        </div>
+    </div>
+
+    <p style="margin-top: 20px; text-align: center; color: #484f58; font-size: 0.75rem; font-style: italic;">
+        Internal Assessment Project • 2026
+    </p>
+</div>
+
+
+
+    <script>
+        // BACKGROUND CONSTELLATION ANIMATION
+        const canvas = document.getElementById('constellation');
+        const ctx = canvas.getContext('2d');
+        let points = [];
+        
+        function init() {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            points = Array.from({length: 70}, () => ({ 
+                x: Math.random()*canvas.width, 
+                y: Math.random()*canvas.height, 
+                vx: (Math.random()-0.5)*0.4, 
+                vy: (Math.random()-0.5)*0.4 
+            }));
+        }
+
+        function animate() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle = "#1f6feb";
+            points.forEach(p => {
+                p.x += p.vx; p.y += p.vy;
+                if(p.x<0||p.x>canvas.width) p.vx*=-1; if(p.y<0||p.y>canvas.height) p.vy*=-1;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI*2); ctx.fill();
+                points.forEach(p2 => {
+                    let d = Math.hypot(p.x-p2.x, p.y-p2.y);
+                    if(d < 180) { 
+                        ctx.strokeStyle = `rgba(88, 166, 255, ${0.15 - d/1200})`; 
+                        ctx.lineWidth = 0.8; 
+                        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); 
+                    }
+                });
+            });
+            requestAnimationFrame(animate);
+        }
+        window.addEventListener('resize', init); init(); animate();
+
+        // GREEDY ALGORITHM LOGIC
+        let jobs = [];
+        class DSU { constructor(n) { this.p = Array.from({length: n+1}, (_, i) => i); } find(i) { return this.p[i]===i ? i : (this.p[i]=this.find(this.p[i])); } union(i, j) { this.p[i]=j; } }
+        
+        function addLog(m) { 
+            const l = document.getElementById('log'); 
+            l.innerHTML += `<div>> ${m}</div>`; 
+            l.scrollTop = l.scrollHeight; 
+        }
+
+        document.getElementById('jobForm').addEventListener('submit', (e) => {
+            e.preventDefault(); 
+            const j = {id: document.getElementById('id').value, d: parseInt(document.getElementById('dl').value), p: parseInt(document.getElementById('pr').value)};
+            jobs.push(j); updateUI(); e.target.reset();
+        });
+
+        function loadDemo() { reset(); jobs = [{id:'J1', d:2, p:100}, {id:'J2', d:1, p:50}, {id:'J3', d:2, p:80}, {id:'J4', d:3, p:120}]; updateUI(); addLog("Demo data loaded."); }
+        
+        function reset() { 
+            jobs = []; 
+            document.getElementById('total').innerText = '$0'; 
+            document.getElementById('time').innerHTML = ''; 
+            document.getElementById('pool').innerHTML = ''; 
+            document.getElementById('log').innerHTML = '> System Reset.'; 
+        }
+
+        function updateUI() { 
+            document.getElementById('pool').innerHTML = jobs.map(j => `<div class="job-chip">${j.id} ($${j.p})</div>`).join(''); 
+        }
+
+        async function run() {
+            if(!jobs.length) return; 
+            addLog("Sorting jobs by profit descending..."); 
+            jobs.sort((a,b) => b.p - a.p); 
+            updateUI();
+
+            const maxD = Math.max(...jobs.map(j => j.d)); 
+            const dsu = new DSU(maxD); 
+            let total = 0;
+
+            const t = document.getElementById('time'); 
+            t.innerHTML = Array.from({length: maxD}, (_, i) => `<div id="s-${i+1}" class="slot">SLOT ${i+1}</div>`).join('');
+
+            for(let j of jobs) {
+                let s = dsu.find(j.d);
+                if(s > 0) {
+                    await new Promise(r => setTimeout(r, 600)); 
+                    dsu.union(s, dsu.find(s-1));
+                    const el = document.getElementById(`s-${s}`); 
+                    el.innerHTML = `<b style="font-size:1rem">${j.id}</b><small>$${j.p}</small>`; 
+                    el.classList.add('filled');
+                    total += j.p; 
+                    document.getElementById('total').innerText = `$${total}`; 
+                    addLog(`Success: ${j.id} placed in slot ${s}.`);
+                } else { 
+                    addLog(`Skip: ${j.id} (No slots left).`); 
+                }
+            }
+        }
+    </script>
+</body>
+</html>
